@@ -1,0 +1,6 @@
+{
+  "name": "QUANG TRUNG SMARTSCHOOL AI",
+  "description": "Trợ lý AI hỗ trợ quản trị, điều hành và nâng cao hiệu quả hoạt động trường tiểu học với ba khu trường.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
