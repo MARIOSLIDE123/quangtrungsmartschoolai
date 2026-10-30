@@ -1,7 +1,7 @@
-export type CampusId = 'all' | 'campus-1' | 'campus-2' | 'campus-3';
+export type CampusId = string;
 
 export interface Campus {
-  id: 'campus-1' | 'campus-2' | 'campus-3';
+  id: string;
   code: string;
   name: string;
   shortName: string;
@@ -44,9 +44,11 @@ export interface Task {
   campusId: CampusId;
   campusName: string;
   assignee: string;
+  assigneeId?: string; // ID nhân sự liên kết hai chiều
   assigneeRole: string;
   creator: string;
   collaborators: string;
+  collaboratorIds?: string[]; // Danh sách ID nhân sự phối hợp
   createdAt: string; // ISO String
   dueDate: string;   // ISO String (YYYY-MM-DD)
   priority: TaskPriority;
@@ -141,9 +143,9 @@ export interface SchoolPlan {
 
 export interface ActivityLog {
   id: string;
-  entityType: 'Nhiệm vụ' | 'Minh chứng' | 'Kế hoạch' | 'Lịch' | 'Hệ thống';
+  entityType: 'Nhiệm vụ' | 'Minh chứng' | 'Kế hoạch' | 'Lịch' | 'Hệ thống' | 'Nhân sự';
   entityId: string;
-  action: 'Tạo mới' | 'Cập nhật' | 'Gửi kiểm tra' | 'Phê duyệt hoàn thành' | 'Khôi phục' | 'Từ chối';
+  action: 'Tạo mới' | 'Cập nhật' | 'Gửi kiểm tra' | 'Phê duyệt hoàn thành' | 'Khôi phục' | 'Từ chối' | 'Nhập Excel' | 'Xuất Excel';
   actor: string;
   actorRole: string;
   timestamp: string;
@@ -160,4 +162,66 @@ export interface CurrentUser {
   campusId: CampusId;
   campusName: string;
   avatarText: string;
+  teacherId?: string; // Liên kết tài khoản với hồ sơ nhân sự
+}
+
+// ==========================================
+// CƠ SỞ DỮ LIỆU HỒ SƠ NHÂN SỰ & GIÁO VIÊN
+// ==========================================
+
+export type StaffStatus = 'Đang làm việc' | 'Chuyển đến' | 'Đã nghỉ hưu' | 'Chuyển đi' | 'Nghỉ việc' | 'Tạm hoãn HĐ';
+
+export type StaffGender = 'Nam' | 'Nữ' | 'Khác';
+
+export interface Staff {
+  id: string;                      // Mã nội bộ duy nhất, vd: STAFF-0102080442
+  moetCode: string;                // Mã định danh Bộ GD&ĐT (chuỗi giữ số 0 đầu)
+  fullName: string;                // Họ và tên
+  birthDate: string;               // Ngày sinh định dạng DD/MM/YYYY
+  gender: StaffGender;             // Giới tính
+  status: StaffStatus;             // Trạng thái công tác
+  ethnicity: string;               // Dân tộc
+  phone: string;                   // Số điện thoại (chuỗi giữ số 0 đầu)
+  jobPosition: string;             // Vị trí việc làm: Giáo viên / Cán bộ quản lý / Nhân viên
+  positionGroup: string;           // Nhóm chức vụ: Hiệu trưởng / Phó hiệu trưởng / Tổ trưởng CM / Nhân viên y tế...
+  contractType: string;            // Hình thức hợp đồng
+  qualification: string;           // Trình độ chuyên môn nghiệp vụ
+  teachingSubject: string;         // Môn dạy
+  campusName: string;              // Phân hiệu hiển thị (chuẩn hóa)
+  campusId?: string;               // Mã khu trường ánh xạ (campus-1, campus-2...)
+  rawCampus?: string;              // Dữ liệu gốc trong Excel (nếu có nhiều dòng/cần xác nhận)
+  avatar?: string;                 // Ảnh đại diện
+  notes?: string;                  // Ghi chú hồ sơ
+  isActive: boolean;               // Còn hoạt động không (thay vì xóa vật lý)
+  isWarning?: boolean;             // Cảnh báo dữ liệu bất thường (ví dụ: nhiều phân hiệu)
+  warningNotes?: string;           // Chi tiết cảnh báo
+  sourceFile?: string;             // Tên file Excel nguồn
+  createdAt: string;               // Ngày tạo
+  updatedAt: string;               // Ngày cập nhật
+}
+
+export interface StaffHistoryEntry {
+  id: string;
+  staffId: string;
+  staffName: string;
+  changedField: string;
+  oldValue: string;
+  newValue: string;
+  changedBy: string;
+  changedRole: string;
+  timestamp: string;
+  reason?: string;
+}
+
+export interface ExcelImportSummary {
+  fileName: string;
+  totalRowsRead: number;
+  validCount: number;
+  duplicateCount: number;
+  missingInfoCount: number;
+  warningCount: number;
+  recognizedColumns: string[];
+  records: Staff[];
+  warningRecords: { row: number; staff: Staff; reason: string }[];
+  duplicateRecords: { row: number; staff: Staff; reason: string }[];
 }

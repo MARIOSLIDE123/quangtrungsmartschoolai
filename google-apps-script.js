@@ -32,11 +32,12 @@ var SHEETS = {
   PLANS: 'Plans',
   LOGS: 'ActivityLogs',
   CAMPUSES: 'Campuses',
-  USERS: 'Users'
+  USERS: 'Users',
+  STAFF: 'Staff'
 };
 
 /**
- * Hàm khởi tạo bảng tính - Chạy hàm này đầu tiên để tự động tạo và định dạng 7 sheet
+ * Hàm khởi tạo bảng tính - Chạy hàm này đầu tiên để tự động tạo và định dạng 8 sheet
  */
 function setupSheets() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -86,6 +87,13 @@ function setupSheets() {
     'ID tài khoản', 'Họ và tên', 'Vai trò hệ thống', 'Chức danh hiển thị',
     'Phạm vi cơ sở', 'Tên phạm vi', 'Ký hiệu Avatar'
   ], '#4B5563');
+
+  // 8. Sheet STAFF (Hồ sơ nhân sự - 14 trường dữ liệu theo Bộ GD&ĐT)
+  setupSheet(ss, SHEETS.STAFF, [
+    'Mã nội bộ', 'Mã định danh Bộ GD&ĐT', 'Họ và tên', 'Ngày sinh', 'Giới tính',
+    'Trạng thái', 'Dân tộc', 'Điện thoại', 'Vị trí việc làm', 'Nhóm chức vụ',
+    'Hình thức hợp đồng', 'Trình độ chuyên môn', 'Môn dạy', 'Phân hiệu', 'Cảnh báo'
+  ], '#0284C7');
 
   // Xóa Sheet mặc định (Sheet1 hoặc Trang tính 1) nếu còn trống
   var defaultSheet = ss.getSheetByName('Sheet1') || ss.getSheetByName('Trang tính 1');
@@ -211,18 +219,27 @@ function doPost(e) {
       if (body.data.events) writeEventsToSheet(ss, body.data.events);
       if (body.data.plans) writePlansToSheet(ss, body.data.plans);
       if (body.data.logs) writeLogsToSheet(ss, body.data.logs);
+      if (body.data.staff) writeStaffToSheet(ss, body.data.staff);
       if (body.log) appendActivityLog(ss, body.log);
       return jsonResponse({ success: true, message: 'Đã đồng bộ toàn bộ dữ liệu vào Google Sheets' });
     }
 
-    // 7. Yêu cầu kéo toàn bộ dữ liệu về
-    if (action === 'pullAll') {
+    // 7. Đồng bộ danh sách hồ sơ nhân sự (Staff)
+    if (action === 'syncStaff' && Array.isArray(body.staff)) {
+      writeStaffToSheet(ss, body.staff);
+      if (body.log) appendActivityLog(ss, body.log);
+      return jsonResponse({ success: true, message: 'Đã cập nhật danh sách nhân sự' });
+    }
+
+    // 8. Yêu cầu kéo toàn bộ dữ liệu về
+    if (action === 'pullAll' || action === 'getAll') {
       var fullData = {
         tasks: readSheetObjects(ss.getSheetByName(SHEETS.TASKS), taskRowToObject),
         evidences: readSheetObjects(ss.getSheetByName(SHEETS.EVIDENCES), evidenceRowToObject),
         events: readSheetObjects(ss.getSheetByName(SHEETS.EVENTS), eventRowToObject),
         plans: readSheetObjects(ss.getSheetByName(SHEETS.PLANS), planRowToObject),
-        logs: readSheetObjects(ss.getSheetByName(SHEETS.LOGS), logRowToObject)
+        logs: readSheetObjects(ss.getSheetByName(SHEETS.LOGS), logRowToObject),
+        staff: readSheetObjects(ss.getSheetByName(SHEETS.STAFF), staffRowToObject)
       };
       return jsonResponse({ success: true, data: fullData });
     }
@@ -413,6 +430,69 @@ function writePlansToSheet(ss, plans) {
   });
 
   sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+}
+
+/**
+ * Ghi đè danh sách Staff vào Sheet Staff
+ */
+function writeStaffToSheet(ss, staffList) {
+  var sheet = ss.getSheetByName(SHEETS.STAFF);
+  if (!sheet) {
+    setupSheets();
+    sheet = ss.getSheetByName(SHEETS.STAFF);
+  }
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).clearContent();
+  }
+
+  if (staffList.length === 0) return;
+
+  var rows = staffList.map(function(s) {
+    return [
+      s.id || '',
+      s.moetCode || '',
+      s.fullName || '',
+      s.birthDate || '',
+      s.gender || 'Nữ',
+      s.status || 'Đang làm việc',
+      s.ethnicity || 'Kinh',
+      s.phone || '',
+      s.jobPosition || 'Giáo viên',
+      s.positionGroup || '',
+      s.contractType || '',
+      s.qualification || '',
+      s.teachingSubject || '',
+      s.campusName || '',
+      s.warningNotes || ''
+    ];
+  });
+
+  sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+}
+
+function staffRowToObject(row) {
+  if (!row[0] && !row[2]) return null;
+  return {
+    id: String(row[0] || 'STAFF-' + row[1]),
+    moetCode: String(row[1] || ''),
+    fullName: String(row[2] || ''),
+    birthDate: formatDateCell(row[3]),
+    gender: row[4] || 'Nữ',
+    status: row[5] || 'Đang làm việc',
+    ethnicity: row[6] || 'Kinh',
+    phone: String(row[7] || ''),
+    jobPosition: row[8] || 'Giáo viên',
+    positionGroup: row[9] || '',
+    contractType: row[10] || '',
+    qualification: row[11] || '',
+    teachingSubject: row[12] || '',
+    campusName: row[13] || '',
+    isActive: row[5] !== 'Đã nghỉ hưu' && row[5] !== 'Nghỉ việc',
+    isWarning: Boolean(row[14]),
+    warningNotes: String(row[14] || '')
+  };
 }
 
 /**

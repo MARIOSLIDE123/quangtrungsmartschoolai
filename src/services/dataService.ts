@@ -1,5 +1,6 @@
-import { Task, Evidence, CalendarEvent, SchoolPlan, ActivityLog, CampusId, CurrentUser, ReviewStatus } from '../types';
+import { Task, Evidence, CalendarEvent, SchoolPlan, ActivityLog, CampusId, CurrentUser, ReviewStatus, Staff, StaffHistoryEntry, Campus } from '../types';
 import { CAMPUSES, USERS, generateInitialTasks, INITIAL_EVIDENCES, INITIAL_EVENTS, INITIAL_PLANS, INITIAL_ACTIVITY_LOGS } from '../data/initialData';
+import { INITIAL_STAFF } from '../data/initialStaff';
 import { GOOGLE_SHEET_CONFIG } from '../config/googleSheetConfig';
 
 const STORAGE_KEYS = {
@@ -10,6 +11,9 @@ const STORAGE_KEYS = {
   LOGS: 'qt_smartschool_logs_v3',
   CURRENT_USER: 'qt_smartschool_current_user_v3',
   GAS_SETTINGS: 'qt_smartschool_gas_settings_v3',
+  STAFF: 'qt_smartschool_staff_v1',
+  CAMPUSES: 'qt_smartschool_campuses_v1',
+  STAFF_HISTORY: 'qt_smartschool_staff_history_v1',
 };
 
 export interface GasSettings {
@@ -207,6 +211,12 @@ class DataService {
         if (Array.isArray(data.logs) && data.logs.length > 0) {
           this.setStored(STORAGE_KEYS.LOGS, data.logs);
         }
+        if (Array.isArray(data.staff) && data.staff.length > 0) {
+          this.setStored(STORAGE_KEYS.STAFF, data.staff);
+        }
+        if (Array.isArray(data.campuses) && data.campuses.length > 0) {
+          this.setStored(STORAGE_KEYS.CAMPUSES, data.campuses);
+        }
 
         const settings = this.getGasSettings();
         settings.lastSyncTime = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -247,6 +257,8 @@ class DataService {
         events: this.getEvents(),
         plans: this.getPlans(),
         logs: this.getActivityLogs(),
+        staff: this.getStaffList(),
+        campuses: this.getCampuses(),
       },
       log: {
         timestamp: new Date().toLocaleString('vi-VN'),
@@ -698,6 +710,9 @@ class DataService {
     localStorage.removeItem(STORAGE_KEYS.EVENTS);
     localStorage.removeItem(STORAGE_KEYS.PLANS);
     localStorage.removeItem(STORAGE_KEYS.LOGS);
+    localStorage.removeItem(STORAGE_KEYS.STAFF);
+    localStorage.removeItem(STORAGE_KEYS.CAMPUSES);
+    localStorage.removeItem(STORAGE_KEYS.STAFF_HISTORY);
     
     // Write fresh seeded data
     this.setStored(STORAGE_KEYS.TASKS, generateInitialTasks());
@@ -705,6 +720,8 @@ class DataService {
     this.setStored(STORAGE_KEYS.EVENTS, INITIAL_EVENTS);
     this.setStored(STORAGE_KEYS.PLANS, INITIAL_PLANS);
     this.setStored(STORAGE_KEYS.LOGS, INITIAL_ACTIVITY_LOGS);
+    this.setStored(STORAGE_KEYS.STAFF, INITIAL_STAFF);
+    this.setStored(STORAGE_KEYS.CAMPUSES, CAMPUSES);
 
     const user = this.getCurrentUser();
     this.logActivity({
@@ -714,6 +731,293 @@ class DataService {
       actorRole: user.roleTitle,
       details: 'Đã khôi phục dữ liệu mẫu ban đầu của trường',
     });
+  }
+
+  // --- CAMPUSES (KHU TRƯỜNG LINH HOẠT) ---
+  getCampuses(): Campus[] {
+    return this.getStored<Campus[]>(STORAGE_KEYS.CAMPUSES, CAMPUSES);
+  }
+
+  saveCampus(campus: Campus, actor: CurrentUser): void {
+    const list = this.getCampuses();
+    const idx = list.findIndex(c => c.id === campus.id);
+    let updated: Campus[];
+    if (idx >= 0) {
+      list[idx] = campus;
+      updated = [...list];
+    } else {
+      updated = [...list, campus];
+    }
+    this.setStored(STORAGE_KEYS.CAMPUSES, updated);
+
+    this.logActivity({
+      entityType: 'Hệ thống',
+      entityId: campus.id,
+      action: idx >= 0 ? 'Cập nhật' : 'Tạo mới',
+      actor: actor.name,
+      actorRole: actor.roleTitle,
+      details: `${idx >= 0 ? 'Cập nhật' : 'Thêm mới'} khu trường: ${campus.name}`,
+    });
+
+    this.pushToGas('syncCampuses', { campuses: updated });
+  }
+
+  // --- STAFF (HỒ SƠ NHÂN SỰ & GIÁO VIÊN) ---
+  getStaffList(): Staff[] {
+    return this.getStored<Staff[]>(STORAGE_KEYS.STAFF, INITIAL_STAFF);
+  }
+
+  getStaffById(id: string): Staff | undefined {
+    return this.getStaffList().find(s => s.id === id);
+  }
+
+  getStaffByMoetCode(moetCode: string): Staff | undefined {
+    return this.getStaffList().find(s => s.moetCode === moetCode);
+  }
+
+  saveStaff(staff: Staff, actor: CurrentUser, reason?: string): Staff {
+    const list = this.getStaffList();
+    const idx = list.findIndex(s => s.id === staff.id || (s.moetCode && s.moetCode === staff.moetCode));
+    const now = new Date().toISOString().split('T')[0];
+    const timestamp = new Date().toLocaleString('vi-VN');
+
+    let updatedStaff: Staff;
+    if (idx >= 0) {
+      const old = list[idx];
+      updatedStaff = {
+        ...old,
+        ...staff,
+        updatedAt: now,
+      };
+      list[idx] = updatedStaff;
+
+      // Ghi lịch sử biến động nếu có thay đổi quan trọng (Phân hiệu, chức danh, trạng thái)
+      if (old.campusName !== updatedStaff.campusName) {
+        this.logStaffHistory({
+          staffId: updatedStaff.id,
+          staffName: updatedStaff.fullName,
+          changedField: 'Phân hiệu / Khu trường',
+          oldValue: old.campusName,
+          newValue: updatedStaff.campusName,
+          changedBy: actor.name,
+          changedRole: actor.roleTitle,
+          timestamp,
+          reason: reason || 'Điều chuyển nhân sự',
+        });
+      }
+      if (old.status !== updatedStaff.status) {
+        this.logStaffHistory({
+          staffId: updatedStaff.id,
+          staffName: updatedStaff.fullName,
+          changedField: 'Trạng thái công tác',
+          oldValue: old.status,
+          newValue: updatedStaff.status,
+          changedBy: actor.name,
+          changedRole: actor.roleTitle,
+          timestamp,
+          reason: reason || 'Cập nhật tình trạng nhân sự',
+        });
+      }
+      if (old.jobPosition !== updatedStaff.jobPosition || old.positionGroup !== updatedStaff.positionGroup) {
+        this.logStaffHistory({
+          staffId: updatedStaff.id,
+          staffName: updatedStaff.fullName,
+          changedField: 'Vị trí / Chức vụ',
+          oldValue: `${old.jobPosition} - ${old.positionGroup || 'Không'}`,
+          newValue: `${updatedStaff.jobPosition} - ${updatedStaff.positionGroup || 'Không'}`,
+          changedBy: actor.name,
+          changedRole: actor.roleTitle,
+          timestamp,
+          reason: reason || 'Bổ nhiệm/phân công công tác',
+        });
+      }
+
+      this.logActivity({
+        entityType: 'Nhân sự',
+        entityId: updatedStaff.id,
+        action: 'Cập nhật',
+        actor: actor.name,
+        actorRole: actor.roleTitle,
+        details: `Cập nhật hồ sơ nhân sự [${updatedStaff.fullName}]: ${reason || 'Chỉnh sửa thông tin'}`,
+      });
+    } else {
+      updatedStaff = {
+        ...staff,
+        id: staff.id || `STAFF-${staff.moetCode || Date.now()}`,
+        createdAt: now,
+        updatedAt: now,
+      };
+      list.push(updatedStaff);
+
+      this.logActivity({
+        entityType: 'Nhân sự',
+        entityId: updatedStaff.id,
+        action: 'Tạo mới',
+        actor: actor.name,
+        actorRole: actor.roleTitle,
+        details: `Thêm mới hồ sơ cán bộ/giáo viên: ${updatedStaff.fullName} (${updatedStaff.jobPosition})`,
+      });
+    }
+
+    this.setStored(STORAGE_KEYS.STAFF, list);
+    this.pushToGas('syncStaff', { staff: list });
+    return updatedStaff;
+  }
+
+  batchImportStaff(importedList: Staff[], actor: CurrentUser, fileName: string): { added: number; updated: number; skipped: number } {
+    const currentList = this.getStaffList();
+    let added = 0;
+    let updated = 0;
+    let skipped = 0;
+    const now = new Date().toISOString().split('T')[0];
+
+    importedList.forEach(incoming => {
+      const idx = currentList.findIndex(c => c.moetCode && c.moetCode === incoming.moetCode);
+      if (idx >= 0) {
+        // Cập nhật thông tin bổ sung nếu có thay đổi
+        currentList[idx] = {
+          ...currentList[idx],
+          ...incoming,
+          updatedAt: now,
+        };
+        updated++;
+      } else {
+        currentList.push({
+          ...incoming,
+          createdAt: now,
+          updatedAt: now,
+        });
+        added++;
+      }
+    });
+
+    this.setStored(STORAGE_KEYS.STAFF, currentList);
+
+    this.logActivity({
+      entityType: 'Nhân sự',
+      entityId: `import-${Date.now()}`,
+      action: 'Nhập Excel',
+      actor: actor.name,
+      actorRole: actor.roleTitle,
+      details: `Nhập dữ liệu từ file [${fileName}]: Thêm mới ${added}, Cập nhật ${updated} hồ sơ`,
+    });
+
+    this.pushToGas('syncStaff', { staff: currentList });
+    return { added, updated, skipped };
+  }
+
+  // Đánh dấu ngừng hoạt động thay vì xóa vật lý
+  deactivateStaff(staffId: string, actor: CurrentUser, reason?: string): boolean {
+    const list = this.getStaffList();
+    const idx = list.findIndex(s => s.id === staffId);
+    if (idx === -1) return false;
+
+    const target = list[idx];
+    target.isActive = false;
+    target.status = 'Nghỉ việc';
+    target.updatedAt = new Date().toISOString().split('T')[0];
+    list[idx] = target;
+
+    this.setStored(STORAGE_KEYS.STAFF, list);
+
+    this.logStaffHistory({
+      staffId: target.id,
+      staffName: target.fullName,
+      changedField: 'Trạng thái hoạt động',
+      oldValue: 'Đang làm việc',
+      newValue: 'Nghỉ việc (Ngừng kích hoạt)',
+      changedBy: actor.name,
+      changedRole: actor.roleTitle,
+      timestamp: new Date().toLocaleString('vi-VN'),
+      reason: reason || 'Đánh dấu dừng công tác',
+    });
+
+    this.logActivity({
+      entityType: 'Nhân sự',
+      entityId: target.id,
+      action: 'Cập nhật',
+      actor: actor.name,
+      actorRole: actor.roleTitle,
+      details: `Đã đánh dấu dừng hoạt động hồ sơ [${target.fullName}]. Lý do: ${reason || 'Dừng công tác'}`,
+    });
+
+    this.pushToGas('syncStaff', { staff: list });
+    return true;
+  }
+
+  // --- STAFF HISTORY (LỊCH SỬ BIẾN ĐỘNG HỒ SƠ) ---
+  getStaffHistory(staffId?: string): StaffHistoryEntry[] {
+    const list = this.getStored<StaffHistoryEntry[]>(STORAGE_KEYS.STAFF_HISTORY, []);
+    if (staffId) {
+      return list.filter(h => h.staffId === staffId);
+    }
+    return list;
+  }
+
+  logStaffHistory(entry: Omit<StaffHistoryEntry, 'id'>): void {
+    const list = this.getStaffHistory();
+    const newEntry: StaffHistoryEntry = {
+      ...entry,
+      id: `sth-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    };
+    const updated = [newEntry, ...list].slice(0, 200);
+    this.setStored(STORAGE_KEYS.STAFF_HISTORY, updated);
+  }
+
+  // Thống kê nhân sự nâng cao
+  getStaffMetrics(filterCampus = 'all') {
+    let staff = this.getStaffList();
+    if (filterCampus !== 'all') {
+      staff = staff.filter(s => s.campusName.includes(filterCampus) || (s.campusId && s.campusId === filterCampus));
+    }
+
+    const total = staff.length;
+    const managers = staff.filter(s => s.jobPosition.toLowerCase().includes('quản lý') || s.positionGroup.toLowerCase().includes('hiệu trưởng')).length;
+    const teachers = staff.filter(s => s.jobPosition.toLowerCase().includes('giáo viên')).length;
+    const employees = staff.filter(s => s.jobPosition.toLowerCase().includes('nhân viên')).length;
+    const active = staff.filter(s => s.status === 'Đang làm việc' || s.status === 'Chuyển đến').length;
+    const retiredOrOthers = total - active;
+
+    // Phân bổ theo phân hiệu / khu trường
+    const campusMap: Record<string, number> = {};
+    staff.forEach(s => {
+      const c = s.campusName || 'Chưa phân bổ';
+      campusMap[c] = (campusMap[c] || 0) + 1;
+    });
+
+    // Phân bổ theo môn dạy
+    const subjectMap: Record<string, number> = {};
+    staff.forEach(s => {
+      const sub = s.teachingSubject || (s.jobPosition === 'Nhân viên' ? 'Khối văn phòng' : 'Chưa phân công');
+      subjectMap[sub] = (subjectMap[sub] || 0) + 1;
+    });
+
+    // Phân bổ theo trình độ chuyên môn
+    const qualificationMap: Record<string, number> = {};
+    staff.forEach(s => {
+      const q = s.qualification || 'Chưa cập nhật';
+      qualificationMap[q] = (qualificationMap[q] || 0) + 1;
+    });
+
+    // Phân bổ theo hợp đồng
+    const contractMap: Record<string, number> = {};
+    staff.forEach(s => {
+      const ct = s.contractType || 'Khác';
+      contractMap[ct] = (contractMap[ct] || 0) + 1;
+    });
+
+    return {
+      total,
+      managers,
+      teachers,
+      employees,
+      active,
+      retiredOrOthers,
+      campusMap,
+      subjectMap,
+      qualificationMap,
+      contractMap,
+    };
   }
 
   // --- STATS & METRICS CALCULATIONS ---

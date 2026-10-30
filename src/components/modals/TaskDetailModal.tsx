@@ -25,6 +25,7 @@ interface TaskDetailModalProps {
   onUpdateTask: (updated: Task) => void;
   onOpenUploadEvidence: (task: Task) => void;
   onOpenAiAssistantWithTask: (task: Task) => void;
+  onOpenStaffProfile?: (staffName: string) => void;
 }
 
 export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
@@ -35,6 +36,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   onUpdateTask,
   onOpenUploadEvidence,
   onOpenAiAssistantWithTask,
+  onOpenStaffProfile,
 }) => {
   if (!isOpen || !task) return null;
 
@@ -213,7 +215,19 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   <span className="text-[10px] text-slate-500 uppercase font-semibold block">
                     Người phụ trách
                   </span>
-                  <div className="font-bold text-slate-800 mt-0.5">{task.assignee}</div>
+                  {onOpenStaffProfile ? (
+                    <button
+                      type="button"
+                      onClick={() => onOpenStaffProfile(task.assignee)}
+                      className="font-bold text-blue-700 hover:text-blue-900 hover:underline text-left mt-0.5 flex items-center gap-1"
+                      title="Bấm để xem hồ sơ nhân sự chi tiết"
+                    >
+                      <span>{task.assignee}</span>
+                      <ExternalLink className="w-3 h-3 text-blue-500" />
+                    </button>
+                  ) : (
+                    <div className="font-bold text-slate-800 mt-0.5">{task.assignee}</div>
+                  )}
                   <div className="text-[10px] text-slate-500">{task.assigneeRole}</div>
                 </div>
                 <div>

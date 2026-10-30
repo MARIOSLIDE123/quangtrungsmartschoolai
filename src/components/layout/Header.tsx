@@ -99,6 +99,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   const screenTitles: Record<NavScreenId, string> = {
     overview: 'Tổng quan điều hành',
+    staff: 'Quản lý hồ sơ nhân sự & Giáo viên',
     tasks: 'Quản lý nhiệm vụ',
     calendar: 'Lịch công tác',
     'ai-assistant': 'Trợ lý AI SmartSchool',

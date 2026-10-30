@@ -11,11 +11,13 @@ import {
   Settings,
   Database,
   Cpu,
+  Users,
 } from 'lucide-react';
 import { CrestLogo } from '../common/CrestLogo';
 
 export type NavScreenId =
   | 'overview'
+  | 'staff'
   | 'tasks'
   | 'calendar'
   | 'ai-assistant'
@@ -45,6 +47,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const navItems: NavItem[] = [
     { id: 'overview', label: 'Tổng quan điều hành', icon: LayoutDashboard },
+    { id: 'staff', label: 'Hồ sơ nhân sự', icon: Users },
     { id: 'tasks', label: 'Quản lý nhiệm vụ', icon: CheckSquare, badge: pendingAlertsCount },
     { id: 'calendar', label: 'Lịch công tác', icon: Calendar },
     { id: 'ai-assistant', label: 'Trợ lý AI', icon: Sparkles },

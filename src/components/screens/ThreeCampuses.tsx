@@ -31,13 +31,18 @@ export const ThreeCampuses: React.FC<ThreeCampusesProps> = ({
   onNavigateScreen,
   onSelectTask,
 }) => {
-  const [activeCampusTab, setActiveCampusTab] = useState<CampusId>('campus-1');
+  const campuses = dataService.getCampuses();
+  const staffList = dataService.getStaffList();
+
+  const [activeCampusTab, setActiveCampusTab] = useState<CampusId>(campuses[0]?.id || 'campus-1');
 
   const tasks = dataService.getTasks();
   const evidences = dataService.getEvidences();
   const events = dataService.getEvents();
 
-  const selectedCampusObj = CAMPUSES.find((c) => c.id === activeCampusTab) || CAMPUSES[0];
+  const selectedCampusObj = campuses.find((c) => c.id === activeCampusTab) || campuses[0] || CAMPUSES[0];
+
+  const campusStaff = staffList.filter((s) => s.campusName.includes(selectedCampusObj.name) || s.campusName.includes(selectedCampusObj.shortName));
 
   const campusTasks = tasks.filter(
     (t) => t.campusId === activeCampusTab || t.campusId === 'all'
@@ -83,8 +88,9 @@ export const ThreeCampuses: React.FC<ThreeCampusesProps> = ({
 
       {/* Campus Selector Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-        {CAMPUSES.map((c) => {
+        {campuses.map((c) => {
           const isSelected = activeCampusTab === c.id;
+          const cStaff = staffList.filter((s) => s.campusName.includes(c.name) || s.campusName.includes(c.shortName));
           const cTasks = tasks.filter((t) => t.campusId === c.id || t.campusId === 'all');
           const cComp = cTasks.filter((t) => t.status === 'Hoàn thành').length;
           const cOver = cTasks.filter((t) => t.status === 'Quá hạn').length;
@@ -107,12 +113,17 @@ export const ThreeCampuses: React.FC<ThreeCampusesProps> = ({
                     style={{ backgroundColor: c.color }}
                   />
                   <h3 className="font-bold text-xs text-[#142B4A] uppercase tracking-wide">
-                    {c.name}
+                    {c.shortName}
                   </h3>
                 </div>
-                <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                  {cRate}%
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700">
+                    {cStaff.length > 0 ? `${cStaff.length} CBGV` : `${c.teachersCount} GV`}
+                  </span>
+                  <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                    {cRate}%
+                  </span>
+                </div>
               </div>
 
               <div className="text-[11px] text-slate-600 mt-2">
@@ -180,9 +191,9 @@ export const ThreeCampuses: React.FC<ThreeCampusesProps> = ({
               </strong>
             </div>
             <div>
-              <span className="text-[10px] text-slate-500 block">Cán bộ GV</span>
+              <span className="text-[10px] text-slate-500 block">Cán bộ GV thực tế</span>
               <strong className="text-base font-bold text-slate-900 tabular-nums">
-                {selectedCampusObj.teachersCount} CBGV
+                {campusStaff.length > 0 ? `${campusStaff.length} CBGV` : `${selectedCampusObj.teachersCount} CBGV`}
               </strong>
             </div>
           </div>

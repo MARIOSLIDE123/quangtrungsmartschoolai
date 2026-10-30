@@ -10,10 +10,12 @@ import { ReportCenter } from './components/screens/ReportCenter';
 import { EvidenceVault } from './components/screens/EvidenceVault';
 import { ThreeCampuses } from './components/screens/ThreeCampuses';
 import { SystemSettings } from './components/screens/SystemSettings';
+import { StaffManager } from './components/screens/StaffManager';
 import { TaskModal } from './components/modals/TaskModal';
 import { TaskDetailModal } from './components/modals/TaskDetailModal';
 import { DemoWalkthroughModal } from './components/modals/DemoWalkthroughModal';
-import { CampusId, CurrentUser, Task } from './types';
+import { StaffDetailModal } from './components/modals/StaffDetailModal';
+import { CampusId, CurrentUser, Task, Staff } from './types';
 import { dataService } from './services/dataService';
 
 export default function App() {
@@ -35,6 +37,7 @@ export default function App() {
   // Modals state
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
   const [selectedTaskForDetail, setSelectedTaskForDetail] = useState<Task | null>(null);
+  const [selectedStaffForModal, setSelectedStaffForModal] = useState<Staff | null>(null);
   const [aiTaskContext, setAiTaskContext] = useState<Task | null>(null);
   const [isDemoScriptOpen, setIsDemoScriptOpen] = useState(false);
 
@@ -76,6 +79,16 @@ export default function App() {
   const handleOpenAiWithTask = (task: Task) => {
     setAiTaskContext(task);
     setActiveScreen('ai-assistant');
+  };
+
+  const handleOpenStaffByName = (staffName: string) => {
+    const list = dataService.getStaffList();
+    const found = list.find((s) => s.fullName === staffName);
+    if (found) {
+      setSelectedStaffForModal(found);
+    } else {
+      setActiveScreen('staff');
+    }
   };
 
   const handleDataReset = () => {
@@ -120,6 +133,14 @@ export default function App() {
               onNavigateScreen={handleSelectScreen}
               onSelectTask={(task) => setSelectedTaskForDetail(task)}
               currentUser={currentUser}
+            />
+          )}
+
+          {activeScreen === 'staff' && (
+            <StaffManager
+              key={`staff-${dataVersion}`}
+              currentUser={currentUser}
+              onOpenTaskDetail={(task) => setSelectedTaskForDetail(task)}
             />
           )}
 
@@ -219,7 +240,23 @@ export default function App() {
           setActiveScreen('evidence');
         }}
         onOpenAiAssistantWithTask={handleOpenAiWithTask}
+        onOpenStaffProfile={handleOpenStaffByName}
       />
+
+      {/* Staff Detail Modal when invoked from Task */}
+      {selectedStaffForModal && (
+        <StaffDetailModal
+          staff={selectedStaffForModal}
+          isOpen={!!selectedStaffForModal}
+          onClose={() => setSelectedStaffForModal(null)}
+          currentUser={currentUser}
+          onUpdateStaff={(updated) => setSelectedStaffForModal(updated)}
+          onOpenTaskDetail={(task) => {
+            setSelectedStaffForModal(null);
+            setSelectedTaskForDetail(task);
+          }}
+        />
+      )}
 
       {/* Demo 8-Step Walkthrough Modal for Judging Panel */}
       <DemoWalkthroughModal
